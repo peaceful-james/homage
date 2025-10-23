@@ -17,5 +17,6 @@ defmodule HomageWeb.Router do
   scope "/", HomageWeb do
     pipe_through :browser
 
+    live "/", HomeLive, :index
   end
 end

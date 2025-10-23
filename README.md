@@ -1,5 +1,16 @@
 # Homage
 
+## First-time setup
+
+Make sure to
+
+``` 
+pip install edge-tts
+```
+
+
+## Auto-generated Phoenix README
+
 To start your Phoenix server:
 
 * Run `mix setup` to install and setup dependencies
