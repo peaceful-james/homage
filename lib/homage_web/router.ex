@@ -17,11 +17,5 @@ defmodule HomageWeb.Router do
   scope "/", HomageWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", HomageWeb do
-  #   pipe_through :api
-  # end
 end
