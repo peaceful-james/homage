@@ -6,8 +6,11 @@ defmodule Homage.EdgeTTS do
   def speak_text_to_file(text_to_speak, speaker_number, file_name) do
     speaker = Enum.at(my_voice_picks(), speaker_number - 1) || "en-US-SaraNeural"
 
+    # Properly escape the text for shell command
+    escaped_text = escape_for_shell(text_to_speak)
+
     command =
-      "edge-tts --voice \"#{speaker}\" --write-media #{file_name} --text \"#{text_to_speak}\""
+      "edge-tts --voice \"#{speaker}\" --write-media #{file_name} --text #{escaped_text}"
 
     case System.cmd("sh", ["-c", command]) do
       {_, 0} ->
@@ -16,6 +19,13 @@ defmodule Homage.EdgeTTS do
       {error_message, _exit_code} ->
         {:error, "Failed to generate audio: #{error_message}"}
     end
+  end
+
+  defp escape_for_shell(text) do
+    # Use single quotes and escape any single quotes in the text
+    # by replacing ' with '\''
+    escaped = String.replace(text, "'", "'\\''")
+    "'#{escaped}'"
   end
 
   def my_voice_picks do
