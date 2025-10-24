@@ -83,8 +83,8 @@ defmodule Homage.BuildAudioFromTranscript do
     } = acc
 
     text_to_speak = Enum.reverse(reversed_to_speak) |> Enum.join(" ")
-    file_name = "./#{audio_dir}/#{file_idx}_spkr_#{speaker_number}.mp3"
-    EdgeTTS.speak_text_to_file(text_to_speak, speaker_number, file_name)
+    file_name = "#{audio_dir}/#{file_idx}_spkr_#{speaker_number}.mp3"
+    {:ok, _} = EdgeTTS.speak_text_to_file(text_to_speak, speaker_number, file_name)
     [file_name | reversed_file_names]
   end
 
