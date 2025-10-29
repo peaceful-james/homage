@@ -37,4 +37,5 @@ npm-debug.log
 
 /tmp-audio-*
 
-output.mp3
+# just ignore all mp3 files
+*.mp3
