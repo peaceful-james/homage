@@ -39,3 +39,7 @@ npm-debug.log
 
 # just ignore all mp3 files
 *.mp3
+
+# ignore any files starting with word transcript
+
+transcript*
