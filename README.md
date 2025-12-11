@@ -1,5 +1,13 @@
 # Homage
 
+## ⚠ BROKEN ⚠ 
+
+😭
+
+Bug in edge-tts has broken homage.
+
+https://github.com/rany2/edge-tts/issues/443
+
 ## First-time setup
 
 Make sure to
