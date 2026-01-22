@@ -3,7 +3,7 @@ defmodule Homage.BuildAudioFromTranscript do
   The module name says it all - build audio from transcript files
   """
 
-  alias Homage.EdgeTTS
+  alias Homage.GTTS
   require Logger
 
   @typedoc """
@@ -25,11 +25,15 @@ defmodule Homage.BuildAudioFromTranscript do
   @doc """
   Read a file and for each non-empty line, switches speaker or reads it
   """
-  @spec build_audio_files(String.t(), String.t()) :: :ok
+  @spec build_audio_files(String.t(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def build_audio_files(file_path, output_file_name \\ "./output.mp3") do
-    audio_dir = "./tmp-audio-#{System.unique_integer()}"
+    output_file_path = Path.expand(output_file_name)
+
+    audio_dir =
+      Path.join(System.tmp_dir!(), "homage-audio-#{System.unique_integer([:positive])}")
+
     log("Creating audio directory: #{audio_dir}")
-    :ok = File.mkdir!(audio_dir)
+    :ok = File.mkdir_p!(audio_dir)
 
     final_acc =
       file_path
@@ -66,11 +70,34 @@ defmodule Homage.BuildAudioFromTranscript do
       )
 
     reversed_file_names = build_temp_file_for_same_speaker_lines(final_acc, audio_dir)
-    {:ok, ^output_file_name} = concat_audio_files(reversed_file_names, output_file_name)
+
+    {existing_file_names, missing_files} =
+      Enum.split_with(reversed_file_names, &File.exists?/1)
+
+    if missing_files != [] do
+      Logger.error("Missing generated audio files: #{Enum.join(missing_files, ", ")}")
+    end
+
+    result =
+      case existing_file_names do
+        [] ->
+          {:error, "No audio files were successfully generated"}
+
+        _ ->
+          concat_audio_files(existing_file_names, output_file_path)
+      end
 
     File.rm_rf!(audio_dir)
-    log("Generated audio file: #{output_file_name}")
-    {:ok, output_file_name}
+
+    case result do
+      {:ok, ^output_file_path} ->
+        log("Generated audio file: #{output_file_path}")
+        {:ok, output_file_path}
+
+      {:error, reason} ->
+        Logger.error("Failed to build audio: #{reason}")
+        {:error, reason}
+    end
   end
 
   @spec build_temp_file_for_same_speaker_lines(acc(), String.t()) :: [file_name()]
@@ -83,9 +110,22 @@ defmodule Homage.BuildAudioFromTranscript do
     } = acc
 
     text_to_speak = Enum.reverse(reversed_to_speak) |> Enum.join(" ")
-    file_name = "#{audio_dir}/#{file_idx}_spkr_#{speaker_number}.mp3"
-    {:ok, _} = EdgeTTS.speak_text_to_file(text_to_speak, speaker_number, file_name)
-    [file_name | reversed_file_names]
+
+    # Skip if text is empty
+    if text_to_speak == "" do
+      reversed_file_names
+    else
+      file_name = "#{audio_dir}/#{file_idx}_spkr_#{speaker_number}.mp3"
+
+      case GTTS.speak_text_to_file(text_to_speak, speaker_number, file_name) do
+        {:ok, _} ->
+          [file_name | reversed_file_names]
+
+        {:error, reason} ->
+          Logger.error("Failed to generate audio for speaker #{speaker_number}: #{reason}")
+          reversed_file_names
+      end
+    end
   end
 
   @spec is_speaker_line?(String.t()) :: boolean()
@@ -100,25 +140,21 @@ defmodule Homage.BuildAudioFromTranscript do
   end
 
   defp concat_audio_files(reversed_file_names, output_file_name) do
-    inputs =
-      reversed_file_names
-      |> Enum.reverse()
-      |> Enum.map(fn file -> "-i #{file}" end)
-      |> Enum.join(" ")
+    file_names = Enum.reverse(reversed_file_names)
+    count = length(file_names)
 
-    count = length(reversed_file_names)
+    inputs = Enum.flat_map(file_names, fn file -> ["-i", file] end)
+    streams = Enum.map_join(0..(count - 1), "", fn i -> "[#{i}:0]" end)
+    filter = "#{streams}concat=n=#{count}:v=0:a=1[out]"
 
-    streams = for i <- 0..(count - 1), do: "[#{i}:0]"
+    args = ["-y"] ++ inputs ++ ["-filter_complex", filter, "-map", "[out]", output_file_name]
 
-    command =
-      "ffmpeg -y #{inputs} -filter_complex '#{streams}concat=n=#{count}:v=0:a=1[out]' -map '[out]' #{output_file_name}"
-
-    case System.cmd("sh", ["-c", command]) do
+    case System.cmd("ffmpeg", args, stderr_to_stdout: true) do
       {_, 0} ->
         {:ok, output_file_name}
 
       {error_message, _exit_code} ->
-        {:error, "Failed to generate audio: #{error_message}"}
+        {:error, "Failed to generate audio: #{String.trim(error_message)}"}
     end
   end
 

@@ -1,6 +1,12 @@
 defmodule Homage.EdgeTTS do
   @moduledoc """
-  Use `edge-tts` to speak a transcript in multiple voices
+  Use `edge-tts` to speak a transcript in multiple voices.
+
+  **NOTE:** This module is not currently in use. The application now uses
+  `Homage.GTTS` for text-to-speech. This module is kept for potential future use
+  as edge-tts offers a wider variety of neural voices.
+
+  To use edge-tts, install it via: `pip install edge-tts`
   """
 
   def speak_text_to_file(text_to_speak, speaker_number, file_name) do

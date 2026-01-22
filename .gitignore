@@ -43,3 +43,4 @@ npm-debug.log
 # ignore any files starting with word transcript
 
 transcript*
+.DS_Store
