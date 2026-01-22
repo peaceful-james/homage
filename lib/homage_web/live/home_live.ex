@@ -17,7 +17,10 @@ defmodule HomageWeb.HomeLive do
     |> assign(:building_audio_file, false)
     |> assign(:uploaded_files, [])
     |> allow_upload(:transcript, accept: ~w(.txt), max_entries: 1)
-    |> assign_transcript_form(%{"output_file_name" => @default_output_mp3_file_name})
+    |> assign_transcript_form(%{
+      "output_file_name" => @default_output_mp3_file_name,
+      "transcript_text" => ""
+    })
     |> then(&{:ok, &1})
   end
 
@@ -106,6 +109,22 @@ defmodule HomageWeb.HomeLive do
         phx-submit="submit-transcript-form"
         class={if @building_audio_file, do: "hidden"}
       >
+        <% transcript_text = to_string(@form[:transcript_text].value || "") %>
+        <% text_present = String.trim(transcript_text) != "" %>
+        <% has_upload = Enum.any?(@uploads.transcript.entries) %>
+
+        <div class="my-6 md:my-8 mx-2">
+          <.input
+            field={f[:transcript_text]}
+            type="textarea"
+            label={gettext("Paste transcript (optional)")}
+            rows="12"
+            placeholder={gettext("Speaker 1 0:00")}
+          />
+          <p class="text-sm opacity-70">
+            {gettext("If provided, pasted text is used instead of an uploaded file.")}
+          </p>
+        </div>
         <label
           for={@uploads.transcript.ref}
           phx-drop-target={@uploads.transcript.ref}
@@ -117,10 +136,10 @@ defmodule HomageWeb.HomeLive do
             "p-3 md:p-4 lg:p-5",
             "rounded-xl border border-dashed",
             "text-center",
-            if(Enum.any?(@uploads.transcript.entries), do: "hidden")
+            if(has_upload, do: "hidden")
           ]}
         >
-          {gettext("Click here or drag-and-drop your transcript here.")}
+          {gettext("Upload a .txt transcript (optional).")}
           <.live_file_input upload={@uploads.transcript} class="hidden" />
         </label>
         <article :for={entry <- @uploads.transcript.entries} class="upload-entry">
@@ -150,7 +169,7 @@ defmodule HomageWeb.HomeLive do
           {error_to_string(err)}
         </p>
         <div
-          class={if Enum.empty?(@uploads.transcript.entries), do: "hidden"}
+          class={if has_upload or text_present, do: nil, else: "hidden"}
           id="upload-dependant-section"
         >
           <div class="flex items-center gap-x-2 my-4">
@@ -232,12 +251,79 @@ defmodule HomageWeb.HomeLive do
 
     mp3_file_name = mp3_file_name_without_ext <> ".mp3"
 
-    consume_uploaded_entries(socket, :transcript, fn %{path: path}, _entry ->
-      BuildAudioFromTranscript.build_audio_files(path, mp3_file_name)
-    end)
+    transcript_text =
+      transcript_form[:transcript_text].value
+      |> to_string()
+      |> String.trim()
 
-    socket
-    |> assign(:building_audio_file, false)
-    |> put_flash(:info, "Saved to #{mp3_file_name}")
+    result =
+      if transcript_text != "" do
+        _ = discard_uploaded_transcript(socket)
+        build_audio_from_text(transcript_text, mp3_file_name)
+      else
+        socket
+        |> consume_uploaded_entries(:transcript, fn %{path: path}, _entry ->
+          case BuildAudioFromTranscript.build_audio_files(path, mp3_file_name) do
+            {:ok, output_path} ->
+              {:ok, {:ok, output_path}}
+
+            {:error, reason} ->
+              {:ok, {:error, reason}}
+          end
+        end)
+        |> normalize_upload_results()
+      end
+
+    socket =
+      case result do
+        {:ok, _output_path} ->
+          put_flash(socket, :info, "Saved to #{mp3_file_name}")
+
+        {:error, reason} ->
+          put_flash(socket, :error, "Failed to build audio: #{reason}")
+      end
+
+    assign(socket, :building_audio_file, false)
+  end
+
+  defp build_audio_from_text(transcript_text, mp3_file_name) do
+    temp_path =
+      Path.join(System.tmp_dir!(), "homage_transcript_#{System.unique_integer([:positive])}.txt")
+
+    try do
+      File.write!(temp_path, transcript_text)
+      BuildAudioFromTranscript.build_audio_files(temp_path, mp3_file_name)
+    rescue
+      exception ->
+        {:error, Exception.message(exception)}
+    after
+      _ = File.rm(temp_path)
+    end
+  end
+
+  defp normalize_upload_results(results) do
+    case results do
+      [{:ok, output_path}] ->
+        {:ok, output_path}
+
+      [{:error, reason}] ->
+        {:error, reason}
+
+      [] ->
+        {:error, "No transcript provided"}
+
+      _ ->
+        {:error, "Unexpected upload result"}
+    end
+  end
+
+  defp discard_uploaded_transcript(socket) do
+    if Enum.any?(socket.assigns.uploads.transcript.entries) do
+      consume_uploaded_entries(socket, :transcript, fn _meta, _entry ->
+        {:ok, :ignored}
+      end)
+    end
+
+    :ok
   end
 end
