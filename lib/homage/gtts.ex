@@ -139,7 +139,9 @@ defmodule Homage.GTTS do
       _ ->
         filtered_path = file_name <> ".filtered"
 
-        case System.cmd("ffmpeg", ["-y", "-i", file_name, "-filter:a", filter, filtered_path],
+        case System.cmd(
+               "ffmpeg",
+               ["-y", "-i", file_name, "-filter:a", filter, "-f", "mp3", filtered_path],
                stderr_to_stdout: true
              ) do
           {_, 0} ->
